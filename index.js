@@ -37,6 +37,21 @@ app.get("/", (req, res) => {
 });
 
 // ========================
+// Função para extrair JSON
+// ========================
+function extractJSON(text) {
+  const first = text.indexOf("{");
+  const last = text.lastIndexOf("}");
+
+  if (first === -1 || last === -1) {
+    throw new Error("JSON não encontrado na resposta");
+  }
+
+  const jsonString = text.slice(first, last + 1);
+  return JSON.parse(jsonString);
+}
+
+// ========================
 // Rota principal
 // ========================
 app.post("/analyze", async (req, res) => {
@@ -58,7 +73,21 @@ app.post("/analyze", async (req, res) => {
     }
 
     const prompt = `
-Aja como um sistema avançado de inteligência de marketing digital, SEO, tráfego pago e copywriting.
+Você é um sistema avançado de inteligência de marketing digital.
+
+⚠️ REGRAS OBRIGATÓRIAS:
+- Retorne APENAS JSON válido
+- Não use markdown
+- Não escreva explicações
+
+Estrutura esperada:
+{
+  "summary": string,
+  "opportunityScore": number,
+  "keywords": string[],
+  "insights": string[],
+  "strategy": string
+}
 
 Dados:
 - Palavra-chave: ${keyword}
@@ -68,41 +97,30 @@ Dados:
 - Público-alvo: ${targetAudience || "Inferir"}
 - Região: ${region || "Brasil"}
 - Objetivo: ${objective}
-
-Retorne APENAS um JSON válido, estruturado, sem texto adicional.
 `;
 
     const completion = await groq.chat.completions.create({
-  model: "llama-3.1-8b-instant",
-  messages: [
-    { role: "user", content: prompt }
-  ],
-  temperature: 0.7
-});
+      model: "llama-3.1-8b-instant",
+      messages: [
+        { role: "system", content: "Você responde SOMENTE em JSON válido." },
+        { role: "user", content: prompt }
+      ],
+      temperature: 0.3
+    });
 
-    // ========================
-    // VALIDAÇÃO CRÍTICA
-    // ========================
-    if (
-      !completion ||
-      !completion.choices ||
-      completion.choices.length === 0 ||
-      !completion.choices[0].message ||
-      !completion.choices[0].message.content
-    ) {
-      console.error("⚠️ Resposta inesperada da Groq:", completion);
+    const rawText = completion?.choices?.[0]?.message?.content;
+
+    if (!rawText) {
       return res.status(500).json({
-        error: "A IA não retornou uma resposta válida"
+        error: "Resposta vazia da IA"
       });
     }
 
-    const text = completion.choices[0].message.content;
-
     let parsed;
     try {
-      parsed = JSON.parse(text);
-    } catch (jsonError) {
-      console.error("❌ Erro ao converter JSON:", text);
+      parsed = extractJSON(rawText);
+    } catch (err) {
+      console.error("❌ JSON inválido recebido:", rawText);
       return res.status(500).json({
         error: "Resposta da IA não é um JSON válido"
       });
