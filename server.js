@@ -1,48 +1,56 @@
 import express from "express";
-import fetch from "node-fetch";
 import cors from "cors";
+import dotenv from "dotenv";
+import { GoogleGenAI, Type } from "@google/genai";
+
+dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.get("/", (req, res) => {
-  res.send("Backend rodando 🚀");
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY
 });
 
-app.post("/api/analisar", async (req, res) => {
+app.post("/analyze", async (req, res) => {
   try {
-    const { palavra, nicho, publico, regiao, objetivo } = req.body;
+    const input = req.body;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: `Faça uma análise de mercado para:
-Palavra-chave: ${palavra}
-Nicho: ${nicho}
-Público: ${publico}
-Região: ${regiao}
-Objetivo: ${objetivo}`
-            }]
-          }]
-        })
+    const prompt = `
+Aja como um sistema avançado de inteligência de marketing digital.
+Analise:
+- Palavra-chave: ${input.keyword}
+- Nicho: ${input.niche}
+- Segmento: ${input.segment}
+- Produto: ${input.product}
+- Público-alvo: ${input.targetAudience || "Inferir"}
+- Região: ${input.region || "Brasil"}
+- Objetivo: ${input.objective}
+
+Retorne SOMENTE JSON estruturado.
+`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json"
       }
-    );
+    });
 
-    const data = await response.json();
-    res.json(data);
+    if (!response.text) {
+      return res.status(500).json({ error: "Resposta vazia da IA" });
+    }
 
+    res.json(JSON.parse(response.text));
   } catch (error) {
-    res.status(500).json({ erro: "Erro ao chamar a IA" });
+    console.error(error);
+    res.status(500).json({ error: "Erro ao gerar análise" });
   }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("Servidor rodando na porta", PORT);
+  console.log(`✅ Backend rodando na porta ${PORT}`);
 });
